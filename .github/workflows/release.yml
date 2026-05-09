@@ -18,19 +18,19 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-            ext: .tar.gz
+            format: tar.gz
           - goos: linux
             goarch: arm64
-            ext: .tar.gz
+            format: tar.gz
           - goos: darwin
             goarch: amd64
-            ext: .tar.gz
+            format: tar.gz
           - goos: darwin
             goarch: arm64
-            ext: .tar.gz
+            format: tar.gz
           - goos: windows
             goarch: amd64
-            ext: .zip
+            format: zip
     steps:
       - uses: actions/checkout@v4
 
@@ -45,22 +45,23 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          name="rip-${GOOS}-${GOARCH}"
           ext=""
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
-          mkdir -p "dist/$name"
-          go build -ldflags="-s -w" -o "dist/$name/rip$ext" ./cmd/cli
+          dir="rip-${GOOS}-${GOARCH}"
+          mkdir -p "dist/$dir"
+          go build -ldflags="-s -w" -o "dist/$dir/rip${ext}" ./cmd/cli
 
       - name: Package
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          FORMAT: ${{ matrix.format }}
         run: |
-          name="rip-${GOOS}-${GOARCH}"
-          if [ "$GOOS" = "windows" ]; then
-            cd "dist/$name" && zip -r "../$name.zip" . && cd ../..
+          dir="rip-${GOOS}-${GOARCH}"
+          if [ "$FORMAT" = "tar.gz" ]; then
+            tar -czf "dist/${dir}.tar.gz" -C "dist" "$dir"
           else
-            tar -czf "dist/$name.tar.gz" -C "dist/$name" .
+            cd "dist" && zip -r "${dir}.zip" "$dir" && cd ..
           fi
 
       - name: Upload asset

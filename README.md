@@ -56,6 +56,7 @@ Download the latest binary for your platform from the releases page.
 | Linux arm64 | Tested | Raspberry Pi, ARM servers |
 | macOS amd64 | Tested | Intel Macs |
 | macOS arm64 (Apple Silicon) | Tested | M1/M2/M3/M4 Macs |
+| WSL (Windows Subsystem for Linux) | Tested | Uses Linux binary natively |
 | Windows | Partial | Basic functionality works; process management limited |
 
 ## Quick Start

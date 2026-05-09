@@ -8,10 +8,16 @@ REPO="nxhung1610/proxy-ipv6-generator-cli"
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/bin}"
 BINARY_NAME="rip"
 
-# Detect OS
+# Detect OS (WSL aware)
 detect_os() {
   case "$(uname -s)" in
-    Linux*)  echo "linux" ;;
+    Linux*)
+      if grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null; then
+        echo "wsl"
+      else
+        echo "linux"
+      fi
+      ;;
     Darwin*) echo "darwin" ;;
     MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
     *) echo "unsupported" ;;
@@ -31,38 +37,21 @@ detect_arch() {
   esac
 }
 
-# Detect package format
-detect_ext() {
-  local os=$1
-  case $os in
-    windows) echo ".exe" ;;
-    *)       echo "" ;;
-  esac
-}
-
-# Print colored messages
-info() { echo -e "\033[1;34m[INFO]\033[0m $1"; }
-warn() { echo -e "\033[1;33m[WARN]\033[0m $1"; }
-error() { echo -e "\033[1;31m[ERROR]\033[0m $1" >&2; }
-success() { echo -e "\033[1;32m[OK]\033[0m $1"; }
-
-# Get latest release version
-get_latest_version() {
-  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | \
-    grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
-}
-
-# Download and install
+# Download and install rip
 install() {
   local os=$1
   local arch=$2
-  local ext
-  ext=$(detect_ext "$os")
 
   if [[ "$os" == "unsupported" || "$arch" == "unsupported" ]]; then
     error "Unsupported platform: $(uname -s) $(uname -m)"
-    error "Supported: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64"
+    error "Supported: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, wsl/amd64, wsl/arm64"
     exit 1
+  fi
+
+  # WSL maps to linux binary
+  local release_os=$os
+  if [[ "$os" == "wsl" ]]; then
+    release_os="linux"
   fi
 
   local version
@@ -72,7 +61,16 @@ install() {
     exit 1
   fi
 
-  local filename="rip-${os}-${arch}${ext}"
+  local ext=""
+  local url_ext=""
+  if [[ "$os" == "windows" ]]; then
+    ext=".exe"
+    url_ext=".zip"
+  else
+    url_ext=".tar.gz"
+  fi
+
+  local filename="rip-${release_os}-${arch}${url_ext}"
   local url="https://github.com/${REPO}/releases/download/${version}/${filename}"
 
   info "Installing RIP ${version} for ${os}/${arch}..."
@@ -97,6 +95,23 @@ install() {
     fi
   done
 
+  # Extract if needed
+  if [[ "$url_ext" == ".tar.gz" ]]; then
+    tar -xzf "$archive" -C "$tmp_dir"
+    rm -f "$archive"
+    archive=$(find "$tmp_dir" -type f -name "rip*" ! -name "*.tar.gz" | head -1)
+  elif [[ "$url_ext" == ".zip" ]]; then
+    unzip -o "$archive" -d "$tmp_dir"
+    rm -f "$archive"
+    archive=$(find "$tmp_dir" -type f -name "rip*.exe" | head -1)
+  fi
+
+  if [[ -z "$archive" || ! -f "$archive" ]]; then
+    error "Failed to extract binary from archive"
+    rm -rf "$tmp_dir"
+    exit 1
+  fi
+
   # Create install directory
   mkdir -p "$INSTALL_DIR"
 
@@ -119,15 +134,24 @@ install() {
 
   # Check if INSTALL_DIR is in PATH
   if [[ ":$PATH:" == *":${INSTALL_DIR}:"* ]]; then
-    info "✓ ${INSTALL_DIR} is in your PATH"
+    info "PATH check: ${INSTALL_DIR} is in your PATH"
   else
     warn "${INSTALL_DIR} is not in your PATH."
-    info "Add this to your shell config:"
+    local rc=""
     if [[ -n "$ZSH_VERSION" ]]; then
-      info "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc"
+      rc="~/.zshrc"
+    elif [[ -f "$HOME/.bashrc" ]]; then
+      rc="~/.bashrc"
     else
-      info "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
+      rc="~/.profile"
     fi
+    info "Add to ${rc}: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  fi
+
+  # WSL-specific note
+  if [[ "$os" == "wsl" ]]; then
+    info "Running on WSL: the binary runs natively inside WSL"
+    info "3proxy will also run inside WSL (Linux binary)"
   fi
 
   info "Run 'rip --help' to get started!"
@@ -135,44 +159,68 @@ install() {
 
 # Install 3proxy
 install_3proxy() {
-  local os
-  local arch
-  os=$1
-  arch=$2
+  local os=$1
+  local arch=$2
 
   info "Installing 3proxy..."
 
   local tmp_dir
   tmp_dir=$(mktemp -d)
-  cd "$tmp_dir"
-
-  local file
-  local url
+  cd "$tmp_dir" || exit
 
   case "$os" in
-    linux)
-      file="3proxy-${arch}.tar.gz"
-      url="https://github.com/3proxy/3proxy/releases/download/0.9.6/${file}"
-      if curl -fsSL -o "$file" "$url" 2>/dev/null && tar -xzf "$file" 2>/dev/null; then
+    linux|wsl)
+      # Try official .tar.gz first
+      local file="3proxy-${arch}.tar.gz"
+      local url="https://github.com/3proxy/3proxy/releases/download/0.9.6/${file}"
+      if curl -fsSL -o "$file" "$url" && tar -xzf "$file"; then
         mv 3proxy "${INSTALL_DIR}/3proxy" && chmod +x "${INSTALL_DIR}/3proxy" && \
           success "3proxy installed to ${INSTALL_DIR}/3proxy"
       else
-        warn "Could not download 3proxy ${arch} binary; install via apt/yum or build from source"
+        warn "Could not download 3proxy binary automatically."
+        info "Install manually:"
+        info "  Debian/Ubuntu: sudo apt install 3proxy"
+        info "  RHEL/Fedora:   sudo dnf install 3proxy"
+        info "  Alpine:        sudo apk add 3proxy"
+        info "  Or build from source: https://github.com/3proxy/3proxy"
       fi
       ;;
     darwin)
-      # No official macOS binary; suggest brew
-      warn "No official 3proxy macOS binary. Install via brew:"
-      info "  brew install 3proxy"
+      if command -v brew >/dev/null 2>&1; then
+        if brew install 3proxy 2>/dev/null; then
+          success "3proxy installed via Homebrew"
+        else
+          warn "Homebrew install failed; try: brew install 3proxy"
+        fi
+      else
+        warn "Homebrew not found."
+        info "Install 3proxy on macOS:"
+        info "  1. Install Homebrew: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        info "  2. brew install 3proxy"
+        info "Or download from: https://github.com/3proxy/3proxy/releases"
+      fi
       ;;
     windows)
-      warn "3proxy Windows installation not yet supported by this script"
+      warn "3proxy Windows installation not supported by this script."
+      info "Download from: https://github.com/3proxy/3proxy/releases"
       ;;
   esac
 
   rm -rf "$tmp_dir"
-  cd - >/dev/null
+  cd - >/dev/null || true
 }
+
+# Get latest release version
+get_latest_version() {
+  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | \
+    grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+# Print colored messages
+info()    { echo -e "\033[1;34m[INFO]\033[0m $1"; }
+warn()    { echo -e "\033[1;33m[WARN]\033[0m $1"; }
+error()   { echo -e "\033[1;31m[ERROR]\033[0m $1" >&2; }
+success() { echo -e "\033[1;32m[OK]\033[0m $1"; }
 
 # Main
 main() {
@@ -186,7 +234,7 @@ main() {
   os=$(detect_os)
   arch=$(detect_arch)
 
-  info "Detected: ${os}/${arch}"
+  info "Detected: ${os} ($(uname -m) / ${arch})"
 
   install "$os" "$arch"
 

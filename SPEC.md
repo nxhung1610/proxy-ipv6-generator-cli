@@ -7,7 +7,7 @@
 **Binary name:** `rip`
 **Core Function:** Generate, manage, and rotate IPv6 proxy servers backed by 3proxy  
 **License:** MIT  
-**Go Version:** 1.21+
+**Go Version:** 1.23+
 
 ### Motivation
 
@@ -37,12 +37,12 @@ IPv6 proxy tooling today is fragmented: shell scripts for Linux, Windows GUI too
 
 | Component | Choice | Reason |
 |-----------|--------|--------|
-| Language | Go 1.21+ | Single binary, cross-platform, fast |
-| CLI Framework | Cobra | Standard, battle-tested |
+| Language | Go 1.23+ | Single binary, cross-platform, fast |
+| CLI Framework | Kong | DI via kong.Bind, subcommand-per-file pattern |
 | Config | Viper + TOML | Env vars, flags, config file precedence |
 | Logging | `log/slog` | Standard library, structured |
 | Proxy Backend | 3proxy 0.9.x | De facto standard, 5K stars, native IPv6 |
-| Build | goreleaser | Cross-platform releases |
+| Build | `go build` + Makefile | Custom cross-platform release workflow |
 | CI | GitHub Actions | Free for public repos |
 
 ---
@@ -145,25 +145,7 @@ Location: `~/.local/share/proxy-ipv6-cli/state.json` (macOS/Linux), `%LOCALAPPDA
 
 ### 3.4 Pool Registry
 
-Location: `~/.local/share/proxy-ipv6-cli/pools.json`
-
-```json
-{
-  "pools": [
-    {
-      "id": "uuid-v4",
-      "name": "default",
-      "prefix": "2001:db8::/64",
-      "basePort": 10000,
-      "count": 100,
-      "protocol": "socks5",
-      "credentialRef": "env:MY_PROXY_USER",
-      "status": "running",
-      "createdAt": "2026-05-09T19:50:00Z"
-    }
-  ]
-}
-```
+Pool definitions are stored inline in `state.json` (see section 3.3). There is no separate `pools.json`.
 
 ---
 
@@ -172,71 +154,43 @@ Location: `~/.local/share/proxy-ipv6-cli/pools.json`
 ```
 rip
 
-  init                        # Interactive setup wizard
-  start [flags]              # Start proxy pool
-    --count N                 # Number of proxies (default: from config)
-    --port N                  # Base port (default: from config)
-    --pool NAME               # Pool name (default: "default")
-    --dry-run                 # Preview without starting
+  init                        # Create config file
+  install                     # Install 3proxy (bundled/system/source)
 
-  stop [flags]               # Stop proxy pool
-    --pool NAME               # Pool name (default: "default")
-    --force                   # SIGKILL instead of SIGTERM
+  generate [flags]           # Generate IPv6 addresses
+    --count N                # Number of addresses (default: from config or 100)
+    --prefix N               # IPv6 prefix override (default: from config)
+    --output FILE             # Output file (default: stdout, JSON)
 
-  status [flags]             # Show proxy pool status
-    --pool NAME               # Pool name (default: "default")
-    --json                    # JSON output
+  pool [subcommand]          # Pool management
+    pool create <name> <prefix> <ports>  # Create a named pool
+      --protocol N           # socks5 or http (default: socks5)
+    pool list                # List all pools (JSON)
+    pool remove <name>       # Remove a pool
+      --yes                  # Skip confirmation
+    pool start [name]        # Start a pool (default: "default")
+    pool stop [name]         # Stop a pool (default: "default")
+    pool status [name]       # Show pool status (default: first pool, JSON)
 
-  generate [flags]            # Generate IPv6 addresses
-    --count N                 # Number of addresses (default: 10)
-    --strategy random|sequential|range  # Generation strategy
-    --start HEX               # Start offset (for sequential/range)
-    --end HEX                 # End offset (for range)
-    --seed N                  # RNG seed for reproducibility
-    --format text|json|csv    # Output format (default: text)
+  config generate [flags]    # Generate 3proxy config for a pool
+    --pool NAME              # Pool name (default: "default")
+    --output FILE            # Output file (default: stdout)
 
-  pool [subcommand]           # Pool management
-    pool create [flags]       # Create a named pool
-    pool list                 # List all pools
-    pool remove NAME          # Remove a pool
-    pool scale NAME --count N # Scale pool size
+  health check [flags]       # Run one-time health check
+    --pool NAME              # Pool name (default: all proxies)
 
-  config [subcommand]         # Config management
-    config generate [flags]     # Generate 3proxy config [x] implemented
-    config set KEY VALUE        # [ ] TODO — not yet implemented
-    config get KEY              # [ ] TODO — not yet implemented
-    config list                 # [ ] TODO — not yet implemented
+  export [flags]            # Export proxy list
+    --format json|txt|csv   # Output format (default: json)
+    --output FILE            # Output file (default: stdout)
 
-  export [flags]              # Export proxy list
-    --pool NAME               # Pool name (default: "default")
-    --format json|txt|csv     # Output format (default: txt)
-    --output FILE             # File path (default: stdout)
-
-  rotate [flags]              # Rotate IPs (manual trigger)
-    --pool NAME               # Pool name (default: "default")
-    --strategy NAME           # Override rotation strategy
-
-  health [subcommand]         # Health check management
-    health check              # Run health checks once
-    health list               # List all proxy health statuses
-    health clear IP:PORT      # Remove from blacklist
-
-  logs [subcommand]           # Log management
-    logs tail                 # Stream live logs
-    logs stats [flags]        # Show aggregate statistics
-      --since DURATION        # e.g. "1h", "24h"
-    logs export [flags]       # Export logs
-      --format json|txt
-      --since DURATION
-
-  dashboard [flags]           # Start web dashboard
-    --port N                  # Dashboard port (default: 8080)
-    --auth USER:PASS          # Basic auth (default: none)
-    --detach                  # Run in background
-
-  version                     # Print version info
-  completions [shell]          # Generate shell completions
+  version                    # Print version info
 ```
+
+**NOT YET IMPLEMENTED** (see §7 "Should Ship" / "Nice to Have"):
+- `rip start`, `rip stop`, `rip status` (top-level)
+- `rip rotate`, `rip logs`, `rip dashboard`, `rip completions`
+- `rip pool scale`
+- `rip config set/get/list`
 
 ---
 
@@ -275,7 +229,7 @@ var (
 
 ## 6. Configuration File Format
 
-TOML via [BurntSushi/toml](https://github.com/BurntSushi/toml).
+TOML via [Viper](https://github.com/spf13/viper) (also handles env var binding and config precedence).
 
 All keys are optional except `server.prefix`. Missing keys use defaults.
 
@@ -309,28 +263,40 @@ maxFailures = 3
 
 ## 7. Acceptance Criteria
 
-### Must Ship (MVP)
-- [ ] `rip init` creates a valid config file
-- [ ] `rip start --count 100` starts 100 proxies, each with a unique IPv6 address
-- [ ] `rip status` shows accurate running/stopped state
-- [ ] `rip generate --count 1000` outputs 1000 unique IPv6 addresses
-- [ ] `rip stop` cleanly terminates 3proxy
-- [ ] `rip export --format json` produces valid JSON
-- [ ] Cross-platform binary builds for macOS, Linux, Windows
-- [ ] `--help` on every command with examples
+### Implemented
+- [x] `rip init` creates a valid config file
+- [x] `rip pool create` creates a named pool
+- [x] `rip pool start` starts 3proxy with generated config for all proxies in the pool
+- [x] `rip pool stop` cleanly terminates 3proxy
+- [x] `rip pool status` shows pool status (JSON)
+- [x] `rip pool list` lists all pools (JSON)
+- [x] `rip pool remove` removes a pool
+- [x] `rip generate` generates IPv6 addresses (JSON)
+- [x] `rip config generate` produces a valid 3proxy.cfg for a pool
+- [x] `rip health check` runs a one-time health check on proxies
+- [x] `rip export --format json|txt|csv` produces correct output formats
+- [x] `rip install` installs 3proxy (bundled → system → source)
+- [x] `rip version` prints version info
+- [x] Cross-platform binary builds for macOS, Linux, Windows (6 targets)
+- [x] `--help` on every command
+- [x] Kong CLI framework with DI via `kong.Bind`
+- [x] Viper-based config with env var overrides
+- [x] Health checking with blacklist
+- [x] Multi-pool management (create, start, stop, remove)
+- [x] SIGTERM/SIGKILL graceful shutdown
 
-### Should Ship
-- [ ] Health checking with blacklist
-- [ ] Rotation strategies
-- [ ] Multi-pool management
-- [ ] Structured JSON logging
-- [ ] `--version` with git info
+### Should Ship (not yet implemented)
+- [ ] `rip start`, `rip stop`, `rip status` as top-level shortcuts
+- [ ] `rip pool scale` to dynamically resize pools
+- [ ] `rip config set/get/list` for runtime config editing
+- [ ] IP rotation strategies (least-connections, time-based)
+- [ ] `--version` with git info (ldflags injection)
 
-### Nice to Have
+### Nice to Have (not yet implemented)
 - [ ] Web dashboard
 - [ ] Bandwidth/connection limits
 - [ ] Homebrew tap
-- [ ] goreleaser release automation
+- [ ] goreleaser release automation (current: custom shell workflow)
 
 ---
 

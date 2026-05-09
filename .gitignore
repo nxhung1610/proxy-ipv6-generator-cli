@@ -93,3 +93,10 @@ external/
 
 # Git worktrees (local development only)
 worktrees/
+
+# Build artifacts and release artifacts
+cli
+proxy-ipv6-cli
+release-manifest.json
+dist/
+3proxy-bin/

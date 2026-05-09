@@ -71,19 +71,17 @@ rip init
 
 Edit `~/.config/proxy-ipv6-cli/config.toml`:
 
-```yaml
-ipv6:
-  prefix: "2001:db8::/32"
-  interface: "eth0"
+```toml
+[server]
+prefix = "2001:db8::/64"
+basePort = 10000
+protocol = "socks5"
+count = 100
 
-pools:
-  default:
-    portRange: "10000-10100"
-    protocol: "socks5"
-    healthCheck:
-      enabled: true
-      interval: "30s"
-      timeout: "5s"
+[health]
+intervalSeconds = 5
+timeoutSeconds = 3
+maxFailures = 3
 ```
 
 ### 3. Generate IPv6 Addresses
@@ -99,11 +97,14 @@ rip generate --prefix 2001:db8:1::/48 --count 50
 ### 4. Start Proxy Pool
 
 ```bash
+# Install 3proxy (required first time)
+rip install
+
 # Start the default pool
 rip pool start
 
 # Check status
-rip status
+rip pool status
 
 # List all pools
 rip pool list
@@ -127,10 +128,13 @@ sudo systemctl reload 3proxy
 | Command | Description |
 |---------|-------------|
 | `rip init` | Initialize configuration |
+| `rip install` | Install 3proxy binary |
 | `rip generate` | Generate IPv6 addresses |
+| `rip pool create` | Create a new pool |
 | `rip pool start` | Start proxy pool |
 | `rip pool stop` | Stop proxy pool |
 | `rip pool status` | Show pool status |
+| `rip pool list` | List all pools |
 | `rip config generate` | Generate 3proxy config |
 | `rip health check` | Run health check |
 | `rip export` | Export proxies to file |

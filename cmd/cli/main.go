@@ -136,12 +136,12 @@ func install3proxy(pm *platform.ProcessManager) error {
 }
 
 func copyFile(src, dst string) error {
-	s, err := os.Open(src)
+	s, err := os.Open(src) // #nosec G304 // src: from Detect3proxy() system paths only
 	if err != nil {
 		return err
 	}
 	defer s.Close()
-	d, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	d, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600) // #nosec G304 // dst: internal InstallPath() construction only
 	if err != nil {
 		return err
 	}

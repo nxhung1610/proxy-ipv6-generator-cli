@@ -26,7 +26,7 @@ func (pm *ProcessManager) Start(path string, args ...string) (*Process, error) {
 		}
 	}
 
-	cmd := exec.Command(path, args...)
+	cmd := exec.Command(path, args...) // #nosec G204 // path: empty uses Detect3proxy(), otherwise from known safe install dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -225,7 +225,7 @@ func BinaryName() string {
 }
 
 func (pm *ProcessManager) GetPIDFromFile(path string) (int, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 // path: always from internal PIDPath(), never user input
 	if err != nil {
 		return 0, fmt.Errorf("failed to read PID file: %w", err)
 	}

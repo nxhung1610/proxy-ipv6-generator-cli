@@ -37,7 +37,7 @@ type Proxy struct {
 	Port     int      `json:"port"`
 	Protocol Protocol `json:"protocol"`
 	Username string   `json:"username"`
-	Password string   `json:"password"`
+	Password string   `json:"-"` // Omitted from JSON export for security
 	Status   string   `json:"status"`
 }
 

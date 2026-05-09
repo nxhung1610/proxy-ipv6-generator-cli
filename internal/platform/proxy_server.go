@@ -122,7 +122,7 @@ func (s *ThreeProxyServer) Stop(ctx context.Context) error {
 	}
 
 	if s.config.PIDPath != "" {
-		os.Remove(s.config.PIDPath)
+		_ = os.Remove(s.config.PIDPath) // Best-effort cleanup
 	}
 
 	s.status.Running = false

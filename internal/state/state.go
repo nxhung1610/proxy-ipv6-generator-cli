@@ -31,12 +31,15 @@ func New(path string) (*StateManager, error) {
 		}
 	}
 
-	dir := filepath.Dir(path)
+	// Sanitize path: resolve . and .. components to prevent traversal
+	cleanPath := filepath.Clean(path)
+
+	dir := filepath.Dir(cleanPath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create state directory: %w", err)
 	}
 
-	sm := &StateManager{path: path}
+	sm := &StateManager{path: cleanPath}
 	sm.state = &types.State{
 		Version: "0.1.0",
 		Pools:   []types.Pool{},

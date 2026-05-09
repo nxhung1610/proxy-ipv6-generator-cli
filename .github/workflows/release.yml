@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Upload
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            ext: .tar.gz
+          - goos: linux
+            goarch: arm64
+            ext: .tar.gz
+          - goos: darwin
+            goarch: amd64
+            ext: .tar.gz
+          - goos: darwin
+            goarch: arm64
+            ext: .tar.gz
+          - goos: windows
+            goarch: amd64
+            ext: .zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          name="rip-${GOOS}-${GOARCH}"
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          mkdir -p "dist/$name"
+          go build -ldflags="-s -w" -o "dist/$name/rip$ext" ./cmd/cli
+
+      - name: Package
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          name="rip-${GOOS}-${GOARCH}"
+          if [ "$GOOS" = "windows" ]; then
+            cd "dist/$name" && zip -r "../$name.zip" . && cd ../..
+          else
+            tar -czf "dist/$name.tar.gz" -C "dist/$name" .
+          fi
+
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist/rip-linux-amd64.tar.gz
+            dist/rip-linux-arm64.tar.gz
+            dist/rip-darwin-amd64.tar.gz
+            dist/rip-darwin-arm64.tar.gz
+            dist/rip-windows-amd64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

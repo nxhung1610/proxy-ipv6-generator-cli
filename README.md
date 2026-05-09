@@ -20,6 +20,16 @@ A high-performance CLI tool for generating and managing IPv6 proxy pools with au
 
 ## Installation
 
+### One-liner (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nxhung1610/proxy-ipv6-generator-cli/main/install.sh | bash
+```
+
+This downloads the latest release binary for your platform (Linux/macOS/Windows, amd64/arm64) and installs it to `~/.local/bin/rip`.
+
+> To also install 3proxy: `curl -fsSL ... | INSTALL_3PROXY=true bash`
+
 ### From Source
 
 ```bash

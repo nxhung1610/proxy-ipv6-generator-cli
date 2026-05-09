@@ -19,18 +19,31 @@ jobs:
           - goos: linux
             goarch: amd64
             format: tar.gz
+            has_3proxy: true
+            3proxy_deb: 3proxy-0.9.6.x86_64.deb
           - goos: linux
             goarch: arm64
             format: tar.gz
+            has_3proxy: true
+            3proxy_deb: 3proxy-0.9.6.arm64.deb
           - goos: darwin
             goarch: amd64
             format: tar.gz
+            has_3proxy: false
           - goos: darwin
             goarch: arm64
             format: tar.gz
+            has_3proxy: false
           - goos: windows
             goarch: amd64
             format: zip
+            has_3proxy: true
+            3proxy_zip: 3proxy-0.9.6.1-x64.zip
+          - goos: windows
+            goarch: arm64
+            format: zip
+            has_3proxy: true
+            3proxy_zip: 3proxy-0.9.6.1-arm64.zip
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +63,26 @@ jobs:
           dir="rip-${GOOS}-${GOARCH}"
           mkdir -p "dist/$dir"
           go build -ldflags="-s -w" -o "dist/$dir/rip${ext}" ./cmd/cli
+
+      - name: Download 3proxy
+        if: matrix.has_3proxy
+        run: |
+          dir="dist/rip-${{ matrix.goos }}-${{ matrix.goarch }}"
+          cd "$dir"
+
+          if [ "${{ matrix.goos }}" = "linux" ]; then
+            curl -sL "https://github.com/3proxy/3proxy/releases/download/0.9.6/${{ matrix.3proxy_deb }}" -o /tmp/3proxy.deb
+            dpkg -x /tmp/3proxy.deb /tmp/3proxy-extract
+            mv /tmp/3proxy-extract/usr/bin/3proxy ./3proxy
+            chmod +x ./3proxy
+          elif [ "${{ matrix.goos }}" = "windows" ]; then
+            curl -sL "https://github.com/3proxy/3proxy/releases/download/0.9.6/${{ matrix.3proxy_zip }}" -o /tmp/3proxy.zip
+            unzip -o /tmp/3proxy.zip
+            if [ -f "3proxy/bin64/3proxy.exe" ]; then
+              mv "3proxy/bin64/3proxy.exe" ./3proxy.exe
+            fi
+            rm -rf 3proxy
+          fi
 
       - name: Package
         env:
@@ -74,5 +107,6 @@ jobs:
             dist/rip-darwin-amd64.tar.gz
             dist/rip-darwin-arm64.tar.gz
             dist/rip-windows-amd64.zip
+            dist/rip-windows-arm64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

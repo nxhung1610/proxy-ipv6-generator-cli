@@ -203,8 +203,8 @@ func TestProcess_Wait(t *testing.T) {
 
 	proc, err := pm.Start("")
 	if err == nil {
-		defer pm.Stop(proc.PID)
-		defer proc.Wait()
+		defer func() { _ = pm.Stop(proc.PID) }() //nolint:errcheck
+		defer func() { _ = proc.Wait() }()       //nolint:errcheck
 
 		if proc.PID <= 0 {
 			t.Errorf("expected valid PID, got %d", proc.PID)
@@ -225,7 +225,7 @@ func TestProcess_Signal(t *testing.T) {
 	if err != nil {
 		t.Skipf("Cannot start test process: %v", err)
 	}
-	defer pm.Stop(proc.PID)
+	defer func() { _ = pm.Stop(proc.PID) }() //nolint:errcheck
 
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
 		t.Logf("SIGTERM returned error (expected): %v", err)

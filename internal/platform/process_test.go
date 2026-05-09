@@ -63,7 +63,7 @@ func TestReadPIDFile(t *testing.T) {
 	dir := t.TempDir()
 	pidPath := filepath.Join(dir, "test.pid")
 
-	os.WriteFile(pidPath, []byte("54321"), 0600)
+	os.WriteFile(pidPath, []byte("54321"), 0600) //nolint:errcheck
 
 	pm := NewProcessManager()
 	pid, err := pm.GetPIDFromFile(pidPath)
@@ -87,7 +87,7 @@ func TestReadPIDFile_InvalidContent(t *testing.T) {
 	dir := t.TempDir()
 	pidPath := filepath.Join(dir, "test.pid")
 
-	os.WriteFile(pidPath, []byte("not-a-number\n"), 0600)
+	os.WriteFile(pidPath, []byte("not-a-number\n"), 0600) //nolint:errcheck
 
 	pm := NewProcessManager()
 	_, err := pm.GetPIDFromFile(pidPath)

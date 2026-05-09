@@ -189,7 +189,7 @@ func TestChecker_StatusCallback(t *testing.T) {
 
 	// Run multiple checks to trigger the callback after MaxFailures
 	for i := 0; i < 5; i++ {
-		checker.CheckAll(ctx)
+		_, _ = checker.CheckAll(ctx) //nolint:errcheck
 	}
 
 	// Give callback time to fire

@@ -226,6 +226,6 @@ func BenchmarkGenerate_10K(b *testing.B) {
 	g, _ := New("2001:db8::/64", 10000, 10)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		g.Generate(10000)
+		_, _ = g.Generate(10000) //nolint:errcheck
 	}
 }

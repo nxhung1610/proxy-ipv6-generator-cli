@@ -59,7 +59,7 @@ func (pm *ProcessManager) Stop(pid int) error {
 		return fmt.Errorf("failed to kill process: %w", err)
 	}
 
-	proc.Wait()
+	_, _ = proc.Wait() // Best-effort: process already killed; ignore state
 	return nil
 }
 

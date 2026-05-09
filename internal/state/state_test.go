@@ -92,7 +92,9 @@ func TestStateManager_UpdatePool_Replace(t *testing.T) {
 	sm, _ := New(path)
 
 	initial := types.Pool{ID: "pool-1", Name: "test-pool", Status: string(types.PoolStatusStopped)}
-	sm.UpdatePool(initial)
+	if err := sm.UpdatePool(initial); err != nil {
+		t.Fatalf("UpdatePool failed: %v", err)
+	}
 
 	updated := types.Pool{ID: "pool-1", Name: "test-pool", Status: string(types.PoolStatusRunning)}
 	if err := sm.UpdatePool(updated); err != nil {
@@ -113,7 +115,9 @@ func TestStateManager_UpdatePool_Persistence(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 
 	sm1, _ := New(path)
-	sm1.UpdatePool(types.Pool{ID: "pool-1", Name: "persist-pool"})
+	if err := sm1.UpdatePool(types.Pool{ID: "pool-1", Name: "persist-pool"}); err != nil {
+		t.Fatalf("UpdatePool failed: %v", err)
+	}
 
 	// Simulate a new process: new StateManager reads from same path
 	sm2, err := New(path)
@@ -135,8 +139,12 @@ func TestStateManager_RemovePool(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 
 	sm, _ := New(path)
-	sm.UpdatePool(types.Pool{ID: "pool-1"})
-	sm.UpdatePool(types.Pool{ID: "pool-2"})
+	if err := sm.UpdatePool(types.Pool{ID: "pool-1"}); err != nil {
+		t.Fatalf("UpdatePool failed: %v", err)
+	}
+	if err := sm.UpdatePool(types.Pool{ID: "pool-2"}); err != nil {
+		t.Fatalf("UpdatePool failed: %v", err)
+	}
 
 	if err := sm.RemovePool("pool-1"); err != nil {
 		t.Fatalf("RemovePool failed: %v", err)
@@ -156,9 +164,15 @@ func TestStateManager_RemovePool_Persistence(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 
 	sm1, _ := New(path)
-	sm1.UpdatePool(types.Pool{ID: "pool-1", Name: "to-delete"})
-	sm1.UpdatePool(types.Pool{ID: "pool-2", Name: "to-keep"})
-	sm1.RemovePool("pool-1")
+	if err := sm1.UpdatePool(types.Pool{ID: "pool-1", Name: "to-delete"}); err != nil {
+		t.Fatalf("UpdatePool failed: %v", err)
+	}
+	if err := sm1.UpdatePool(types.Pool{ID: "pool-2", Name: "to-keep"}); err != nil {
+		t.Fatalf("UpdatePool failed: %v", err)
+	}
+	if err := sm1.RemovePool("pool-1"); err != nil {
+		t.Fatalf("RemovePool failed: %v", err)
+	}
 
 	// New process reads persisted state
 	sm2, _ := New(path)
@@ -205,7 +219,9 @@ func TestStateManager_SetProxyState_Persistence(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 
 	sm1, _ := New(path)
-	sm1.SetProxyState(types.ThreeProxyState{PID: 99999, ConfigPath: "/test.cfg"})
+	if err := sm1.SetProxyState(types.ThreeProxyState{PID: 99999, ConfigPath: "/test.cfg"}); err != nil {
+		t.Fatalf("SetProxyState failed: %v", err)
+	}
 
 	sm2, _ := New(path)
 	state := sm2.GetState()
@@ -245,7 +261,7 @@ func TestStateManager_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			sm.UpdatePool(types.Pool{ID: fmt.Sprintf("pool-%d", id)})
+			_ = sm.UpdatePool(types.Pool{ID: fmt.Sprintf("pool-%d", id)}) //nolint:errcheck
 		}(i)
 	}
 	wg.Wait()
@@ -260,7 +276,7 @@ func TestStateManager_CorruptedFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 
-	os.WriteFile(path, []byte("{ invalid json }"), 0644)
+	os.WriteFile(path, []byte("{ invalid json }"), 0644) //nolint:errcheck
 
 	sm, err := New(path)
 	if err != nil {
@@ -280,7 +296,7 @@ func TestStateManager_ConcurrentReads(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 	sm, _ := New(path)
-	sm.UpdatePool(types.Pool{ID: "test-pool"})
+	_ = sm.UpdatePool(types.Pool{ID: "test-pool"}) //nolint:errcheck
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
@@ -307,7 +323,7 @@ func TestStateManager_ConcurrentWriteAndRead(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			sm.UpdatePool(types.Pool{ID: fmt.Sprintf("pool-%d", id)})
+			_ = sm.UpdatePool(types.Pool{ID: fmt.Sprintf("pool-%d", id)}) //nolint:errcheck
 		}(i)
 	}
 	for i := 0; i < 50; i++ {

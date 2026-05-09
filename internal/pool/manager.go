@@ -178,12 +178,12 @@ func (m *Manager) saveState() {
 	}
 	current := make(map[string]bool)
 	for _, p := range m.pools {
-		m.stateMgr.UpdatePool(p.Pool)
+		_ = m.stateMgr.UpdatePool(p.Pool) //nolint:errcheck
 		current[p.ID] = true
 	}
 	for _, p := range m.stateMgr.GetState().Pools {
 		if !current[p.ID] {
-			m.stateMgr.RemovePool(p.ID)
+			_ = m.stateMgr.RemovePool(p.ID) //nolint:errcheck
 		}
 	}
 }
@@ -216,13 +216,13 @@ func (m *Manager) Count() int {
 
 func parsePortRange(ports string) int {
 	var start int
-	fmt.Sscanf(ports, "%d-", &start)
+	_, _ = fmt.Sscanf(ports, "%d-", &start)
 	return start
 }
 
 func countPorts(ports string) int {
 	var start, end int
-	fmt.Sscanf(ports, "%d-%d", &start, &end)
+	_, _ = fmt.Sscanf(ports, "%d-%d", &start, &end)
 	return end - start + 1
 }
 

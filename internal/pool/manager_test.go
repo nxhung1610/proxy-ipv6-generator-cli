@@ -46,8 +46,14 @@ func TestManager_CreateThenGetByName(t *testing.T) {
 	m := NewManager(nil)
 	server := platform.NewThreeProxyServer(platform.NewProcessManager())
 
-	m.Create(types.PoolConfig{Name: "find-me", Prefix: "2001:db8::/64", Ports: "10000-10010"}, server)
-	m.Create(types.PoolConfig{Name: "other", Prefix: "2001:db8:1::/64", Ports: "20000-20005"}, server)
+	_, err := m.Create(types.PoolConfig{Name: "find-me", Prefix: "2001:db8::/64", Ports: "10000-10010"}, server)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	_, err = m.Create(types.PoolConfig{Name: "other", Prefix: "2001:db8:1::/64", Ports: "20000-20005"}, server)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
 
 	got, ok := m.GetByName("find-me")
 	if !ok {
@@ -66,8 +72,8 @@ func TestManager_List(t *testing.T) {
 		t.Errorf("empty manager should return empty list, got %d", len(pools))
 	}
 
-	m.Create(types.PoolConfig{Name: "pool-1", Prefix: "2001:db8::/64", Ports: "10000-10004"}, server)
-	m.Create(types.PoolConfig{Name: "pool-2", Prefix: "2001:db8:1::/64", Ports: "20000-20009"}, server)
+	_, _ = m.Create(types.PoolConfig{Name: "pool-1", Prefix: "2001:db8::/64", Ports: "10000-10004"}, server)
+	_, _ = m.Create(types.PoolConfig{Name: "pool-2", Prefix: "2001:db8:1::/64", Ports: "20000-20009"}, server)
 
 	pools := m.List()
 	if len(pools) != 2 {

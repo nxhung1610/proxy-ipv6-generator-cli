@@ -81,11 +81,11 @@ func (s *ThreeProxyServer) Start(ctx context.Context, cfg ProxyServerConfig) err
 
 	if cfg.PIDPath != "" {
 		if err := EnsureDir(filepath.Dir(cfg.PIDPath)); err != nil {
-			proc.Signal(syscall.SIGTERM)
+			_ = proc.Signal(syscall.SIGTERM) // Best-effort cleanup
 			return fmt.Errorf("failed to create pid dir: %w", err)
 		}
 		if err := s.pm.WritePIDFile(cfg.PIDPath, proc.PID); err != nil {
-			proc.Signal(syscall.SIGTERM)
+			_ = proc.Signal(syscall.SIGTERM) // Best-effort cleanup
 			return fmt.Errorf("failed to write PID file: %w", err)
 		}
 	}
@@ -114,10 +114,10 @@ func (s *ThreeProxyServer) Stop(ctx context.Context) error {
 
 	proc, err := os.FindProcess(pid)
 	if err == nil {
-		proc.Signal(syscall.SIGTERM)
+		_ = proc.Signal(syscall.SIGTERM) // Best-effort
 		time.Sleep(grace)
 		if proc.Signal(syscall.Signal(0)) == nil {
-			proc.Kill()
+			_ = proc.Kill() // Best-effort
 		}
 	}
 

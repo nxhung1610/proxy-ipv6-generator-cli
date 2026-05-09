@@ -139,7 +139,7 @@ func (c *Checker) Start(ctx context.Context) {
 		for {
 			select {
 			case <-ticker.C:
-				c.CheckAll(ctx)
+				_, _ = c.CheckAll(ctx) // Best-effort: log in production
 			case <-c.stopCh:
 				return
 			case <-ctx.Done():

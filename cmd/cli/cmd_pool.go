@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/config"
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/platform"
@@ -65,7 +67,7 @@ func (c *PoolStartCmd) Run(ctx *CLIContext) error {
 		}
 	}
 
-	if err := ctx.PoolMgr.Start(nil, p.ID); err != nil {
+	if err := ctx.PoolMgr.Start(context.Background(), p.ID); err != nil {
 		return fmt.Errorf("failed to start pool: %w", err)
 	}
 
@@ -97,11 +99,11 @@ func (c *PoolStartCmd) Run(ctx *CLIContext) error {
 
 	pidPath := ctx.ProcMgr.PIDPath(p.ID)
 	if err := platform.EnsureDir(filepath.Dir(pidPath)); err != nil {
-		ctx.ProcMgr.Stop(proc.PID)
+		_ = ctx.ProcMgr.Stop(proc.PID) // Best-effort cleanup
 		return fmt.Errorf("failed to create pid dir: %w", err)
 	}
 	if err := ctx.ProcMgr.WritePIDFile(pidPath, proc.PID); err != nil {
-		ctx.ProcMgr.Stop(proc.PID)
+		_ = ctx.ProcMgr.Stop(proc.PID) // Best-effort cleanup
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}
 
@@ -133,7 +135,10 @@ func (c *PoolStopCmd) Run(ctx *CLIContext) error {
 	}
 	_ = os.Remove(pidPath)
 
-	if err := ctx.PoolMgr.Stop(nil, p.ID); err != nil {
+	stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := ctx.PoolMgr.Stop(stopCtx, p.ID); err != nil {
 		return fmt.Errorf("failed to stop pool: %w", err)
 	}
 
@@ -194,7 +199,10 @@ func (c *PoolRemoveCmd) Run(ctx *CLIContext) error {
 	if !c.Yes {
 		fmt.Printf("Are you sure you want to remove pool '%s'? (y/N): ", c.Name)
 		var confirm string
-		fmt.Scanln(&confirm)
+		if _, err := fmt.Scanln(&confirm); err != nil {
+			fmt.Println("Cancelled")
+			return nil
+		}
 		if confirm != "y" && confirm != "Y" {
 			fmt.Println("Cancelled")
 			return nil

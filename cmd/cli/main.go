@@ -149,7 +149,10 @@ func copyFile(src, dst string) error {
 	if _, err := io.Copy(d, s); err != nil {
 		return err
 	}
-	return d.Close()
+	if err := d.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(dst, 0755)
 }
 
 func main() {

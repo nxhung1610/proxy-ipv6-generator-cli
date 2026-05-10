@@ -6,6 +6,7 @@ import (
 
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/config"
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/errs"
+	"github.com/nxhung/proxy-ipv6-generator-cli/internal/pool"
 	"github.com/nxhung/proxy-ipv6-generator-cli/pkg/types"
 )
 
@@ -14,14 +15,32 @@ type ConfigCmd struct {
 }
 
 type ConfigGenerateCmd struct {
-	Pool   string `short:"p" default:"default" help:"Pool name"`
+	Pool   string `short:"p" help:"Pool name (finds running pool if not specified)"`
 	Output string `short:"o" help:"Output file"`
 }
 
 func (c *ConfigGenerateCmd) Run(ctx *CLIContext) error {
-	p, ok := ctx.PoolMgr.GetByName(c.Pool)
-	if !ok {
-		return fmt.Errorf("pool not found: %s", c.Pool)
+	var p *pool.Pool
+	var ok bool
+
+	if c.Pool != "" {
+		p, ok = ctx.PoolMgr.GetByName(c.Pool)
+		if !ok {
+			return fmt.Errorf("pool not found: %s", c.Pool)
+		}
+	} else {
+		// Find the first running pool
+		for _, pool := range ctx.PoolMgr.List() {
+			if pool.Status == string(types.PoolStatusRunning) {
+				p, ok = ctx.PoolMgr.Get(pool.ID)
+				if ok {
+					break
+				}
+			}
+		}
+		if p == nil {
+			return fmt.Errorf("no running pool found; specify a pool with --pool")
+		}
 	}
 
 	proxies := p.GetProxies()

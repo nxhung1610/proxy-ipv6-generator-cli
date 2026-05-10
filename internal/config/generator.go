@@ -18,20 +18,35 @@ const (
 )
 
 // threeProxyTemplate is parsed once at init for performance.
-var threeProxyTemplate = template.Must(template.New("3proxy").Parse(`maxconn {{ .MaxConn }}
+var threeProxyTemplate = template.Must(template.New("3proxy").Funcs(template.FuncMap{
+	"hasCredentials": hasCredentials,
+}).Parse(`maxconn {{ .MaxConn }}
 nserver {{ .DNSServer }}
 nscache {{ .NSCache }}
 timeouts {{ .Timeouts }}
+{{- if and .Proxies (hasCredentials .Proxies) }}
 auth strong
-{{- if .Proxies }}
 users {{ range $i, $p := .Proxies }}{{ if $i }} {{ end }}{{ $p.Username }}:{{ $p.Password }}{{ end }}
-{{ end }}{{ range $p := .Proxies }}
+{{ range $p := .Proxies }}
 allow {{ $p.Username }}
-proxy -6 -n{{ $.MaxConn }} -a {{ $p.Address }} {{ $p.Port }} {{ $p.Username }} {{ $p.Password }}
-{{ end }}
+proxy -6 -n{{ $.MaxConn }} -i {{ $p.Address }} -p {{ $p.Port }}
+{{ end }}{{- else }}
+{{ range $p := .Proxies }}
+proxy -6 -n{{ $.MaxConn }} -i {{ $p.Address }} -p {{ $p.Port }}
+{{ end }}{{- end }}
 log /var/log/3proxy.log D
 rotate 7
 `))
+
+// hasCredentials returns true if any proxy in the list has non-empty credentials.
+func hasCredentials(proxies []ProxyData) bool {
+	for _, p := range proxies {
+		if p.Username != "" && p.Password != "" {
+			return true
+		}
+	}
+	return false
+}
 
 // sanitizeCredential removes characters dangerous for 3proxy user credentials.
 // 3proxy user/password cannot contain: \n, \r, :, #, ;, space, or backslash.

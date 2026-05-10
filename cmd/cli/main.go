@@ -45,6 +45,7 @@ type GenerateCmd struct {
 	Count  int    `short:"n" help:"Number of addresses to generate"`
 	Prefix string `short:"p" help:"IPv6 prefix (e.g., 2001:db8::/64)"`
 	Output string `short:"o" help:"Output file (default: stdout)"`
+	Pool   string `short:"P" help:"Pool name to add generated proxies to"`
 }
 
 func (c *GenerateCmd) Run(ctx *CLIContext) error {
@@ -78,6 +79,17 @@ func (c *GenerateCmd) Run(ctx *CLIContext) error {
 	proxies, err := gen.Generate(count)
 	if err != nil {
 		return fmt.Errorf("failed to generate proxies: %w", err)
+	}
+
+	// Add to pool if specified
+	if c.Pool != "" {
+		_, ok := ctx.PoolMgr.GetByName(c.Pool)
+		if !ok {
+			return fmt.Errorf("pool not found: %s", c.Pool)
+		}
+		ctx.ProxyMgr.AddBatch(proxies)
+		fmt.Printf("Added %d proxies to pool '%s'\n", len(proxies), c.Pool)
+		return nil
 	}
 
 	data, _ := json.MarshalIndent(proxies, "", "  ")

@@ -9,6 +9,30 @@ import (
 	"github.com/nxhung/proxy-ipv6-generator-cli/pkg/types"
 )
 
+// Default values for 3proxy configuration.
+const (
+	DefaultMaxConn     = 500
+	DefaultDNSServer   = "8.8.8.8"
+	DefaultNSCache     = 65536
+	DefaultTimeouts    = "1 5 30 5 180"
+)
+
+// threeProxyTemplate is parsed once at init for performance.
+var threeProxyTemplate = template.Must(template.New("3proxy").Parse(`maxconn {{ .MaxConn }}
+nserver {{ .DNSServer }}
+nscache {{ .NSCache }}
+timeouts {{ .Timeouts }}
+auth strong
+{{- if .Proxies }}
+users {{ range $i, $p := .Proxies }}{{ if $i }} {{ end }}{{ $p.Username }}:{{ $p.Password }}{{ end }}
+{{ end }}{{ range $p := .Proxies }}
+allow {{ $p.Username }}
+proxy -6 -n{{ $.MaxConn }} -a {{ $p.Address }} {{ $p.Port }} {{ $p.Username }} {{ $p.Password }}
+{{ end }}
+log /var/log/3proxy.log D
+rotate 7
+`))
+
 // sanitizeCredential removes characters dangerous for 3proxy user credentials.
 // 3proxy user/password cannot contain: \n, \r, :, #, ;, space, or backslash.
 func sanitizeCredential(s string) string {
@@ -36,18 +60,13 @@ func sanitizeAddress(s string) string {
 	}, s)
 }
 
-// sanitize3proxyValue removes characters that could be used for template
-// injection or config file injection in 3proxy.
-// 3proxy user/password cannot contain: \n, \r, :, #, ;, space, or backslash.
-func sanitize3proxyValue(s string) string {
+// sanitizeDNSServer removes newlines and control characters from DNS server string.
+func sanitizeDNSServer(s string) string {
 	return strings.Map(func(r rune) rune {
-		switch {
-		case r < 32 || r == '\\' || r == '\n' || r == '\r' ||
-			r == ':' || r == '#' || r == ';' || r == ' ':
+		if r < 32 || r == '\n' || r == '\r' {
 			return -1
-		default:
-			return r
 		}
+		return r
 	}, s)
 }
 
@@ -59,26 +78,15 @@ type ProxyData struct {
 	Protocol string
 }
 
-func Generate3proxyConfig(pool types.Pool, proxies []types.Proxy, maxConn int) (string, error) {
-	tmpl := `maxconn {{ .MaxConn }}
-nserver {{ .DNSServer }}
-nscache {{ .NSCache }}
-timeouts 1 5 30 5 180
-users {{ range $i, $p := .Proxies }}{{ if $i }}
-{{ end }}{{ $p.Username }}:{{ $p.Password }}{{ end }}
+func Generate3proxyConfig(pool types.Pool, proxies []types.Proxy, maxConn int, dnssrv string) (string, error) {
+	if maxConn <= 0 {
+		maxConn = DefaultMaxConn
+	}
 
-{{ range $p := .Proxies }}auth strong
-allow {{ $p.Username }}
-proxy -6 -n{{ $.MaxConn }} -a {{ $p.Address }} {{ $p.Port }} {{ $p.Username }} {{ $p.Password }}
-{{ end }}
-
-log /var/log/3proxy.log D
-rotate 7
-`
-
-	t, err := template.New("3proxy").Parse(tmpl)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse template: %w", err)
+	// Sanitize DNSServer to prevent config injection
+	dnssrv = sanitizeDNSServer(dnssrv)
+	if dnssrv == "" {
+		dnssrv = DefaultDNSServer
 	}
 
 	sanitizedProxies := make([]ProxyData, len(proxies))
@@ -94,13 +102,14 @@ rotate 7
 
 	data := map[string]interface{}{
 		"MaxConn":   maxConn,
-		"DNSServer": "8.8.8.8",
-		"NSCache":   65536,
+		"DNSServer": dnssrv,
+		"NSCache":   DefaultNSCache,
+		"Timeouts":  DefaultTimeouts,
 		"Proxies":   sanitizedProxies,
 	}
 
 	var buf bytes.Buffer
-	if err := t.Execute(&buf, data); err != nil {
+	if err := threeProxyTemplate.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("failed to execute template: %w", err)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nxhung/proxy-ipv6-generator-cli/pkg/types"
 	"github.com/spf13/viper"
@@ -18,12 +19,13 @@ func Load(configPath string) (*types.Config, error) {
 
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
+		v.AddConfigPath(filepath.Join(homeDir, ".config", "rip"))
 		v.AddConfigPath(filepath.Join(homeDir, ".config", "proxy-ipv6-cli"))
 		v.AddConfigPath(filepath.Join(homeDir, ".config", "proxy-ipv6-generator-cli"))
+		v.AddConfigPath(filepath.Join(homeDir, ".local", "share", "rip"))
 	}
 
 	v.AddConfigPath(".")
-	v.AddConfigPath("~/.config/proxy-ipv6-cli")
 
 	if configPath != "" {
 		v.SetConfigFile(configPath)
@@ -35,7 +37,8 @@ func Load(configPath string) (*types.Config, error) {
 	v.SetDefault("server.basePort", 10000)
 	v.SetDefault("server.protocol", "socks5")
 	v.SetDefault("server.count", 100)
-	v.SetDefault("proxy.maxConn", 500)
+	v.SetDefault("proxy.maxConn", DefaultMaxConn)
+	v.SetDefault("proxy.dnssrv", DefaultDNSServer)
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.format", "text")
 	v.SetDefault("health.enabled", true)
@@ -67,9 +70,21 @@ func InitConfig(configPath string) error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	dir := filepath.Join(homeDir, ".config", "proxy-ipv6-cli")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
+	// Support both legacy and new config locations
+	dirs := []string{
+		filepath.Join(homeDir, ".config", "rip"),
+		filepath.Join(homeDir, ".local", "share", "rip"),
+	}
+
+	dir := ""
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0700); err == nil {
+			dir = d
+			break
+		}
+	}
+	if dir == "" {
+		dir = dirs[0] // fallback
 	}
 
 	defaultConfig := `server.prefix = ""
@@ -83,6 +98,7 @@ credentialRef = ""
 [proxy]
 binaryPath = ""
 maxConn = 500
+dnssrv = "8.8.8.8"
 bandwidthLimitKBps = 0
 
 [logging]
@@ -106,6 +122,9 @@ maxFailures = 3
 	}
 
 	if err := os.WriteFile(cfgFile, []byte(defaultConfig), 0600); err != nil {
+		if errors.Is(err, os.ErrPermission) || strings.Contains(strings.ToLower(err.Error()), "permission denied") {
+			return fmt.Errorf("failed to write config to %s: permission denied", cfgFile)
+		}
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 

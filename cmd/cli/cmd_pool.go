@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/config"
+	"github.com/nxhung/proxy-ipv6-generator-cli/internal/errs"
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/platform"
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/pool"
 	"github.com/nxhung/proxy-ipv6-generator-cli/pkg/types"
@@ -72,19 +73,31 @@ func (c *PoolStartCmd) Run(ctx *CLIContext) error {
 	}
 
 	proxyList := p.GetProxies()
-	cfgStr, err := config.Generate3proxyConfig(p.Pool, proxyList, 500)
+
+	cfg, err := config.Load("")
+	if err != nil {
+		cfg = &types.Config{}
+	}
+
+	dnssrv := cfg.Proxy.DNSServer
+	maxConn := cfg.Proxy.MaxConn
+	if maxConn == 0 {
+		maxConn = config.DefaultMaxConn
+	}
+
+	cfgStr, err := config.Generate3proxyConfig(p.Pool, proxyList, maxConn, dnssrv)
 	if err != nil {
 		return fmt.Errorf("failed to generate 3proxy config: %w", err)
 	}
 
 	poolDir := ctx.ProcMgr.ConfigPath(p.ID)
 	if err := platform.EnsureDir(poolDir); err != nil {
-		return fmt.Errorf("failed to create pool dir: %w", err)
+		return errs.WrapFileError("failed to create pool directory", poolDir, err)
 	}
 
 	cfgPath := filepath.Join(poolDir, "3proxy.cfg")
 	if err := os.WriteFile(cfgPath, []byte(cfgStr), 0600); err != nil {
-		return fmt.Errorf("failed to write 3proxy config: %w", err)
+		return errs.WrapFileError("failed to write 3proxy config", cfgPath, err)
 	}
 
 	binPath, err := ctx.ProcMgr.Detect3proxy()
@@ -100,11 +113,11 @@ func (c *PoolStartCmd) Run(ctx *CLIContext) error {
 	pidPath := ctx.ProcMgr.PIDPath(p.ID)
 	if err := platform.EnsureDir(filepath.Dir(pidPath)); err != nil {
 		_ = ctx.ProcMgr.Stop(proc.PID) // Best-effort cleanup
-		return fmt.Errorf("failed to create pid dir: %w", err)
+		return errs.WrapFileError("failed to create PID directory", filepath.Dir(pidPath), err)
 	}
 	if err := ctx.ProcMgr.WritePIDFile(pidPath, proc.PID); err != nil {
 		_ = ctx.ProcMgr.Stop(proc.PID) // Best-effort cleanup
-		return fmt.Errorf("failed to write PID file: %w", err)
+		return errs.WrapFileError("failed to write PID file", pidPath, err)
 	}
 
 	fmt.Printf("Pool '%s' started (PID %d, %d proxies)\n", name, proc.PID, len(proxyList))

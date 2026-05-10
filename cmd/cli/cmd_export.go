@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
+
+	"github.com/nxhung/proxy-ipv6-generator-cli/internal/errs"
 )
 
 type ExportCmd struct {
@@ -20,20 +23,27 @@ func (c *ExportCmd) Run(ctx *CLIContext) error {
 		data, _ := json.MarshalIndent(proxies, "", "  ")
 		output = string(data)
 	case "txt":
+		var lines []string
 		for _, p := range proxies {
-			output += fmt.Sprintf("%s:%d\n", p.Address, p.Port)
+			lines = append(lines, fmt.Sprintf("%s:%d", p.Address, p.Port))
 		}
+		output = strings.Join(lines, "\n") + "\n"
 	case "csv":
-		output = "id,address,port,protocol,status\n"
+		var lines []string
+		lines = append(lines, "id,address,port,protocol,status")
 		for _, p := range proxies {
-			output += fmt.Sprintf("%s,%s,%d,%s,%s\n", p.ID, p.Address, p.Port, p.Protocol, p.Status)
+			lines = append(lines, fmt.Sprintf("%s,%s,%d,%s,%s", p.ID, p.Address, p.Port, p.Protocol, p.Status))
 		}
+		output = strings.Join(lines, "\n") + "\n"
 	default:
 		return fmt.Errorf("unsupported format: %s", c.Format)
 	}
 
 	if c.Output != "" {
-		return os.WriteFile(c.Output, []byte(output), 0600)
+		if err := os.WriteFile(c.Output, []byte(output), 0600); err != nil {
+			return errs.WrapFileError("failed to write", c.Output, err)
+		}
+		return nil
 	}
 
 	fmt.Print(output)

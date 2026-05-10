@@ -83,9 +83,10 @@ type AuthConfig struct {
 }
 
 type ProxyConfig struct {
-	BinaryPath       string `toml:"binaryPath"`
-	MaxConn         int    `toml:"maxConn"`
-	BandwidthLimitKBps int `toml:"bandwidthLimitKBps"`
+	BinaryPath        string `toml:"binaryPath"`
+	MaxConn           int    `toml:"maxConn"`
+	DNSServer         string `toml:"dnssrv"`
+	BandwidthLimitKBps int    `toml:"bandwidthLimitKBps"`
 }
 
 type LoggingConfig struct {

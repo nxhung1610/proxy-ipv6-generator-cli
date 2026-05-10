@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/config"
+	"github.com/nxhung/proxy-ipv6-generator-cli/internal/errs"
+	"github.com/nxhung/proxy-ipv6-generator-cli/pkg/types"
 )
 
 type ConfigCmd struct {
@@ -23,15 +25,30 @@ func (c *ConfigGenerateCmd) Run(ctx *CLIContext) error {
 	}
 
 	proxies := p.GetProxies()
-	cfg, err := config.Generate3proxyConfig(p.Pool, proxies, 500)
+
+	cfg, err := config.Load("")
+	if err != nil {
+		cfg = &types.Config{}
+	}
+
+	dnssrv := cfg.Proxy.DNSServer
+	maxConn := cfg.Proxy.MaxConn
+	if maxConn == 0 {
+		maxConn = config.DefaultMaxConn
+	}
+
+	cfgOut, err := config.Generate3proxyConfig(p.Pool, proxies, maxConn, dnssrv)
 	if err != nil {
 		return fmt.Errorf("failed to generate config: %w", err)
 	}
 
 	if c.Output != "" {
-		return os.WriteFile(c.Output, []byte(cfg), 0600)
+		if err := os.WriteFile(c.Output, []byte(cfgOut), 0600); err != nil {
+			return errs.WrapFileError("failed to write config file", c.Output, err)
+		}
+		return nil
 	}
 
-	fmt.Println(cfg)
+	fmt.Println(cfgOut)
 	return nil
 }

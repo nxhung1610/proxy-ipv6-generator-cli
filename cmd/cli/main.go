@@ -11,6 +11,7 @@ import (
 
 	"github.com/alecthomas/kong"
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/config"
+	"github.com/nxhung/proxy-ipv6-generator-cli/internal/errs"
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/generator"
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/platform"
 	"github.com/nxhung/proxy-ipv6-generator-cli/internal/pool"
@@ -29,14 +30,15 @@ type CLIContext struct {
 }
 
 type CLI struct {
-	Init     InitCmd      `cmd:"" help:"Initialize configuration"`
-	Install  InstallCmd   `cmd:"install" help:"Install 3proxy (bundled)"`
-	Generate GenerateCmd  `cmd:"generate" help:"Generate IPv6 addresses"`
-	Pool     PoolCmd      `cmd:"pool" help:"Manage proxy pools"`
-	Config   ConfigCmd    `cmd:"config" help:"Configuration management"`
-	Health   HealthCmd    `cmd:"health" help:"Health check management"`
+	Setup    SetupCmd      `cmd:"setup" help:"Initialize config and install 3proxy (combines init+install)"`
+	Init     InitCmd       `cmd:"init" help:"Initialize configuration (deprecated: use setup)"`
+	Install  InstallCmd    `cmd:"install" help:"Install 3proxy binary (deprecated: use setup)"`
+	Generate GenerateCmd   `cmd:"generate" help:"Generate IPv6 addresses"`
+	Pool     PoolCmd       `cmd:"pool" help:"Manage proxy pools"`
+	Config   ConfigCmd     `cmd:"config" help:"Configuration management"`
+	Health   HealthCmd     `cmd:"health" help:"Health check management"`
 	Export   ExportCmd    `cmd:"export" help:"Export proxies"`
-	Version  VersionCmd   `cmd:"version" help:"Show version"`
+	Version  VersionCmd    `cmd:"version" help:"Show version"`
 }
 
 type GenerateCmd struct {
@@ -80,7 +82,10 @@ func (c *GenerateCmd) Run(ctx *CLIContext) error {
 
 	data, _ := json.MarshalIndent(proxies, "", "  ")
 	if c.Output != "" {
-		return os.WriteFile(c.Output, data, 0600)
+		if err := os.WriteFile(c.Output, data, 0600); err != nil {
+			return errs.WrapFileError("failed to write", c.Output, err)
+		}
+		return nil
 	}
 
 	fmt.Println(string(data))
@@ -90,6 +95,7 @@ func (c *GenerateCmd) Run(ctx *CLIContext) error {
 type InstallCmd struct{}
 
 func (c *InstallCmd) Run(ctx *CLIContext) error {
+	fmt.Fprintf(os.Stderr, "\nWARNING: 'rip install' is deprecated. Use 'rip setup' instead.\n\n")
 	return install3proxy(ctx.ProcMgr)
 }
 
@@ -135,24 +141,43 @@ func install3proxy(pm *platform.ProcessManager) error {
 	return fmt.Errorf("no 3proxy binary available; compile from source:\n  git clone https://github.com/3proxy/3proxy.git && cd 3proxy && make -f Makefile.Linux && make install\nthen run 'rip install' again")
 }
 
+// copyFile copies a file from src to dst atomically using rename to avoid TOCTOU races.
 func copyFile(src, dst string) error {
+	// Create temp file in same directory as dst for atomic rename
+	dir := filepath.Dir(dst)
+	tmp, err := os.CreateTemp(dir, "3proxy-*.bin")
+	if err != nil {
+		return errs.WrapFileError("cannot create temp file in "+dir, "", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath) // Best-effort cleanup if we fail
+
 	s, err := os.Open(src) // #nosec G304 // src: from Detect3proxy() system paths only
 	if err != nil {
-		return err
+		tmp.Close()
+		return errs.WrapFileError("cannot read", src, err)
 	}
 	defer s.Close()
-	d, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600) // #nosec G304 // dst: internal InstallPath() construction only
-	if err != nil {
-		return err
+
+	if _, err := io.Copy(tmp, s); err != nil {
+		tmp.Close()
+		return fmt.Errorf("failed to copy %s -> %s: %w", src, tmpPath, err)
 	}
-	defer d.Close()
-	if _, err := io.Copy(d, s); err != nil {
-		return err
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
 	}
-	if err := d.Close(); err != nil {
-		return err
+
+	// Set executable bit before atomic rename
+	if err := os.Chmod(tmpPath, 0755); err != nil {
+		return fmt.Errorf("failed to chmod temp file: %w", err)
 	}
-	return os.Chmod(dst, 0755)
+
+	// Atomic rename replaces dst safely
+	if err := os.Rename(tmpPath, dst); err != nil {
+		return fmt.Errorf("failed to install binary to %s: %w", dst, err)
+	}
+
+	return nil
 }
 
 func main() {
